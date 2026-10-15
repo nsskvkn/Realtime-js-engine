@@ -57,3 +57,25 @@ If we attempted a deep class hierarchy (`Entity → MovingEntity → HomingEntit
 Instead, we limited inheritance to **one level** (`Ship`, `Bullet`, `Asteroid`, `Explosion` extend `Entity`) and implemented cross-cutting features via **composition**:
 - `withHoming(entity, config)` attaches a target-seeking steering function into `entity.behaviors[]`, allowing both player missiles (`KeyE`) and red hunter asteroids to share the exact same homing code.
 - `createPickup({ x, y, pickupType })` composes a `pickup` data component onto a base `Entity` without creating a rigid `Pickup` subclass tree.
+
+---
+
+# Dogfight — Lab 03: Assets, Web Audio API, and Game Lobby
+
+## New Features & Architecture
+- **AssetManager (`src/render/assets.js`)**: Asynchronously tracks image and asset loading, calculating a real-time progress ratio (`loadedCount / totalCount`) to drive the HTML progress bar.
+- **Web Audio API Sound Engine (`src/render/audio.js`)**: Implements procedural audio synthesis entirely in the browser without external audio files:
+  - **Laser Shots:** Sawtooth oscillator with exponential frequency drop-off (`880Hz → 110Hz`).
+  - **Explosions:** White noise buffer routed through a low-pass biquad filter with linear frequency decay.
+  - **Pickups:** Sine oscillator with rising frequency sweep (`440Hz → 880Hz`).
+- **Game Lobby & Overlay (`index.html`, `style.css`)**: Blocks the simulation loop until the asset manager completes loading and the user explicitly clicks the "PLAY GAME" button (fulfilling browser autoplay policies requiring a user gesture before starting `AudioContext`).
+
+---
+
+## Milestone Technical Write-Up (Lab 03)
+
+### 1. Handling Browser Autoplay Policies with Web Audio API
+Modern browsers block `AudioContext` creation or automatic resumption until a direct user gesture (such as a click on the "PLAY GAME" button) occurs. In `src/main.js`, we initialize and resume the `AudioContext` only inside the `startBtn.addEventListener("click", ...)` callback. This ensures sound effects fire reliably without triggering `DOMException` errors in the console.
+
+### 2. Procedural vs. Static Audio Assets
+Rather than packing heavy `.mp3` or `.wav` files that introduce network latency and loading overhead, Lab 03 utilizes procedural synthesis via native oscillators and noise buffers. This guarantees instant asset readiness, zero memory bloat, and programmatic flexibility (e.g., dynamically shifting pitch and decay parameters based on game events).

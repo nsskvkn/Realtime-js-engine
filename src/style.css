@@ -9,8 +9,84 @@ html, body {
   height: 100%;
   overflow: hidden;
   background: #0b0e14;
+  font-family: monospace;
+  color: #e0e6ed;
 }
 
 canvas {
   display: block;
+}
+
+  #ui-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: rgba(11, 14, 20, 0.85);
+  z-index: 10;
+  transition: opacity 0.3s ease;
+}
+
+#ui-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.menu-box {
+  text-align: center;
+  border: 1px solid rgba(76, 201, 240, 0.3);
+  padding: 40px 60px;
+  background: rgba(18, 24, 38, 0.9);
+  box-shadow: 0 0 30px rgba(76, 201, 240, 0.15);
+}
+
+h1 {
+  font-size: 36px;
+  color: #4cc9f0;
+  margin-bottom: 10px;
+  letter-spacing: 2px;
+}
+
+p.subtitle {
+  color: #8d99ae;
+  margin-bottom: 30px;
+  font-size: 14px;
+}
+
+.btn {
+  background: #4cc9f0;
+  color: #0b0e14;
+  border: none;
+  padding: 12px 32px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn:hover {
+  background: #72efdd;
+  transform: scale(1.05);
+}
+
+.loader-container {
+  width: 260px;
+  height: 8px;
+  background: #212529;
+  border: 1px solid #4cc9f0;
+  margin-top: 20px;
+  overflow: hidden;
+}
+
+.loader-bar {
+  width: 0%;
+  height: 100%;
+  background: #72efdd;
+  transition: width 0.1s linear;
 }

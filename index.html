@@ -3,10 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dogfight — Lab 01</title>
+    <title>Dogfight — Lab 03</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <div id="ui-overlay">
+      <div class="menu-box">
+        <h1>DOGFIGHT ARCADE</h1>
+        <p class="subtitle">Lab 03: Web Audio, Assets & Lobby</p>
+        <button id="start-btn" class="btn" disabled>LOADING...</button>
+        <div class="loader-container">
+          <div id="loader-bar" class="loader-bar"></div>
+        </div>
+      </div>
+    </div>
+
     <canvas id="game"></canvas>
     <script type="module" src="/src/main.js"></script>
   </body>

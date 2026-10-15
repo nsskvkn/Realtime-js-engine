@@ -1,6 +1,7 @@
 import { Vector2 } from "./vector.js";
 import { Asteroid, Explosion, createPickup, withHoming } from "./entities.js";
 import { detectCollisions } from "./collision.js";
+import { audio } from "../render/audio.js";
 
 export class World {
   #entities = new Map();
@@ -18,6 +19,9 @@ export class World {
     this.#entities.set(entity.id, entity);
     if (entity.kind === "ship") {
       this.playerShip = entity;
+    }
+    if (entity.kind === "bullet") {
+      audio.playLaser();
     }
     return entity;
   }
@@ -108,7 +112,6 @@ export class World {
   }
 
   step(dt, input) {
-    // 1. Зберігаємо попередній стан і оновлюємо всі живі сутності
     for (const entity of this) {
       if (!entity.alive) continue;
       entity.savePreviousState();
@@ -124,14 +127,12 @@ export class World {
       }
     }
 
-    // 2. Перевіряємо та обробляємо колізії
     const pairs = detectCollisions(this);
     for (const [a, b] of pairs) {
       if (!a.alive || !b.alive) continue;
       this.#resolvePair(a, b);
     }
 
-    // 3. Таймер респауну гравця (2 секунди після знищення)
     if (this.playerShip && !this.playerShip.alive) {
       this.respawnTimer -= dt;
       if (this.respawnTimer <= 0) {
@@ -141,7 +142,6 @@ export class World {
       }
     }
 
-    // 4. Підтримуємо кількість астероїдів та бонусів на арені
     let asteroidCount = 0;
     for (const _ of this.ofKind("asteroid")) asteroidCount++;
     if (asteroidCount < 5) {
@@ -160,7 +160,6 @@ export class World {
       this.pickupSpawnTimer = 8.0;
     }
 
-    // 5. Відкладене зачищення мертвих сутностей (Deferred Despawn Sweep)
     for (const [id, entity] of this.#entities) {
       if (!entity.alive || this.#pendingRemoval.has(id)) {
         this.#entities.delete(id);
@@ -174,18 +173,17 @@ export class World {
       (a.kind === k1 && b.kind === k2) ? [a, b] :
       (b.kind === k1 && a.kind === k2) ? [b, a] : null;
 
-    // Куля влучає в астероїд
     const bulletAst = byKind("bullet", "asteroid");
     if (bulletAst) {
       const [bullet, asteroid] = bulletAst;
       bullet.alive = false;
       asteroid.takeDamage(bullet.damage);
       this.spawn(new Explosion({ x: bullet.pos.x, y: bullet.pos.y, color: "#ffd166", count: 8 }));
+      audio.playExplosion();
 
       if (!asteroid.alive) {
         this.score += asteroid.isHoming ? 150 : 100;
         this.spawn(new Explosion({ x: asteroid.pos.x, y: asteroid.pos.y, color: "#ff7b00", count: 22 }));
-        // Великий астероїд розпадається на два менших
         if (asteroid.radius > 22) {
           this.spawnAsteroid({ x: asteroid.pos.x, y: asteroid.pos.y, radius: 16, homing: false });
           this.spawnAsteroid({ x: asteroid.pos.x, y: asteroid.pos.y, radius: 16, homing: false });
@@ -194,13 +192,13 @@ export class World {
       return;
     }
 
-    // Корабель зіштовхується з астероїдом
     const shipAst = byKind("ship", "asteroid");
     if (shipAst) {
       const [ship, asteroid] = shipAst;
       asteroid.alive = false;
       ship.takeDamage(35);
       this.spawn(new Explosion({ x: asteroid.pos.x, y: asteroid.pos.y, color: "#ef476f", count: 16 }));
+      audio.playExplosion();
 
       if (!ship.alive) {
         this.spawn(new Explosion({ x: ship.pos.x, y: ship.pos.y, color: "#4cc9f0", count: 35 }));
@@ -209,17 +207,16 @@ export class World {
       return;
     }
 
-    // Корабель підбирає бонус (Pickup)
     const shipPickup = byKind("ship", "pickup");
     if (shipPickup) {
       const [ship, pickup] = shipPickup;
       ship.applyPickup(pickup.pickup);
       pickup.alive = false;
       this.score += 50;
+      audio.playPickup();
       return;
     }
 
-    // Два астероїди пружно відштовхуються один від одного
     if (a.kind === "asteroid" && b.kind === "asteroid") {
       const normal = b.pos.sub(a.pos).normalize();
       const overlap = a.radius + b.radius - a.pos.sub(b.pos).length();
