@@ -1,53 +1,52 @@
 import { createLoop } from "./loop.js";
 import { createInput } from "./input.js";
-import { createArena, wrapShip } from "./sim/arena.js";
-import { createShip, cloneShip, integrate } from "./sim/ship.js";
+import { createArena } from "./sim/arena.js";
+import { Ship } from "./sim/ship.js";
+import { World } from "./sim/world.js";
 import { setupCanvas } from "./render/canvas.js";
-import { interpolateShip, drawGrid, drawShip, drawHud } from "./render/draw.js";
+import { drawGrid, drawWorld, drawHud } from "./render/draw.js";
 
 const canvas = document.getElementById("game");
+const arena = createArena(window.innerWidth || 1200, window.innerHeight || 800);
+const world = new World(arena);
 
-// Початкові дефолтні розміри арени
-const arena = createArena(
-  window.innerWidth || 1200,
-  window.innerHeight || 800
-);
+const ship = new Ship(arena.width / 2, arena.height / 2);
+world.spawn(ship);
 
-const currentShip = createShip(arena.width / 2, arena.height / 2);
-let previousShip = cloneShip(currentShip);
+// Стартові астероїди (звичайні сірі та червоні самонавідні)
+for (let i = 0; i < 6; i++) {
+  world.spawnAsteroid({ radius: 32, homing: i % 2 === 0 });
+}
 
 const { ctx } = setupCanvas(canvas, (width, height) => {
   arena.width = width;
   arena.height = height;
-  // Якщо корабель ще не рухався, тримаємо його в центрі
-  if (currentShip.vx === 0 && currentShip.vy === 0) {
-    currentShip.x = width / 2;
-    currentShip.y = height / 2;
-    previousShip = cloneShip(currentShip);
-  }
 });
 
 const input = createInput(window);
 
+// --- ДЕМОНСТРАЦІЯ ТА ВИПРАВЛЕННЯ БАГА З `this` (Lab 02 Section 2) ---
+// Наївний виклик `canvas.addEventListener("mousedown", ship.fire)` зламається,
+// тому що всередині `fire` контекст `this` вказуватиме на HTMLCanvasElement, а не на `ship`!
+// Правильне рішення — обгортка у стрілкову функцію, яка зберігає лексичний контекст:
+canvas.addEventListener("mousedown", () => ship.fire(world, false));
+
 function simulate(dt) {
   if (input.justPressed("KeyR")) {
-    Object.assign(currentShip, createShip(arena.width / 2, arena.height / 2));
-    previousShip = cloneShip(currentShip);
-    return;
+    ship.reset(arena.width / 2, arena.height / 2);
+    if (!world.get(ship.id)) {
+      world.spawn(ship);
+    }
   }
 
-  previousShip = cloneShip(currentShip);
-  integrate(currentShip, input, dt);
-  wrapShip(currentShip, previousShip, arena);
+  world.step(dt, input);
 }
 
 function render(alpha, stats) {
   ctx.clearRect(0, 0, arena.width, arena.height);
   drawGrid(ctx, arena);
-
-  const renderState = interpolateShip(previousShip, currentShip, alpha);
-  drawShip(ctx, renderState);
-  drawHud(ctx, stats);
+  drawWorld(ctx, world, alpha);
+  drawHud(ctx, stats, world);
 }
 
 const loop = createLoop({
