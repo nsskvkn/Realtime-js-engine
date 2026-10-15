@@ -79,3 +79,23 @@ Modern browsers block `AudioContext` creation or automatic resumption until a di
 
 ### 2. Procedural vs. Static Audio Assets
 Rather than packing heavy `.mp3` or `.wav` files that introduce network latency and loading overhead, Lab 03 utilizes procedural synthesis via native oscillators and noise buffers. This guarantees instant asset readiness, zero memory bloat, and programmatic flexibility (e.g., dynamically shifting pitch and decay parameters based on game events).
+
+---
+
+# Dogfight — Lab 04: Node.js, EventEmitter, Streams, and WebSockets
+
+## Server Architecture & New Features
+- **Node.js WebSocket Server (`server/server.js`)**: Built using the `ws` library and native Node.js HTTP server to handle real-time bidirectional communication with clients.
+- **Game Room Management (`server/gameRoom.js`)**: Extends Node's native `EventEmitter` class to emit and listen to custom events (`join`, `leave`), tracking client states and game entities inside an isolated room instance.
+- **File System Streams (`server/server.js`)**: Utilizes `fs.createWriteStream()` to asynchronously log connection events (`gameLog.txt`) without blocking the event loop.
+- **Client-Server Synchronization (`src/main.js`)**: Establishes a WebSocket connection (`ws://localhost:8080`) upon clicking "PLAY GAME", continuously streaming player input and ship positioning to the server.
+
+---
+
+## Milestone Technical Write-Up (Lab 04)
+
+### 1. EventEmitter Pattern in Server Rooms
+The `GameRoom` class inherits from `EventEmitter`, cleanly decoupling network transport from game event handling. When a client connects or disconnects, the room emits lifecycle events (`join`, `leave`), triggering asynchronous log writers and console notifications independently.
+
+### 2. Non-Blocking File Logging via Streams
+Using `fs.createWriteStream` instead of synchronous file writes (`fs.appendFileSync`) ensures that high-frequency client requests or heavy tick loops do not block the Node.js event loop, maintaining smooth server-side performance and efficient I/O handling.

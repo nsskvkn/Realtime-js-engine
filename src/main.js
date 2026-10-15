@@ -29,13 +29,27 @@ canvas.addEventListener("mousedown", () => {
   if (gameStarted) ship.fire(world, false);
 });
 
-// --- ЛОБІ ТА ЕКРАН ЗАВАНТАЖЕННЯ ---
+// --- WEBSOCKET CLIENT ---
+let socket = null;
+function connectWebSocket() {
+  socket = new WebSocket("ws://localhost:8080");
+  socket.onopen = () => {
+    console.log("Connected to Dogfight Server!");
+    socket.send(JSON.stringify({ type: "join", name: "Player_" + Math.floor(Math.random() * 1000) }));
+  };
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === "state") {
+      // Тут можна синхронізувати інших гравців за потреби
+    }
+  };
+}
+
 let gameStarted = false;
 const startBtn = document.getElementById("start-btn");
 const loaderBar = document.getElementById("loader-bar");
 const uiOverlay = document.getElementById("ui-overlay");
 
-// Симулюємо завантаження асетів (можна додавати реальні картинок через assets.loadImage)
 assets.loadImage("ship", "/favicon.svg");
 
 function checkLoading() {
@@ -53,6 +67,7 @@ requestAnimationFrame(checkLoading);
 
 startBtn.addEventListener("click", () => {
   audio.init();
+  connectWebSocket();
   gameStarted = true;
   uiOverlay.classList.add("hidden");
   loop.start();
@@ -69,6 +84,16 @@ function simulate(dt) {
   }
 
   world.step(dt, input);
+
+  // Відправляємо позицію на сервер через WebSocket
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "input",
+      x: ship.pos.x,
+      y: ship.pos.y,
+      angle: ship.angle
+    }));
+  }
 }
 
 function render(alpha, stats) {
