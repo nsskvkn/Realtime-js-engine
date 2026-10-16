@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket, type RawData } from "ws";
+import { performance } from "node:perf_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +12,6 @@ import {
   type ClientMessage,
 } from "../src/net/protocol.ts";
 
-// --- ZOD-VALIDATED SERVER CONFIG (M3) ---
 const ServerConfigSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
   HOST: z.string().default("0.0.0.0"),
@@ -27,24 +27,48 @@ const config = ServerConfigSchema.parse({
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logStream = fs.createWriteStream(path.join(__dirname, "gameLog.txt"), { flags: "a" });
 
-const server = createServer((_req, res) => {
+const defaultRoom = new GameRoom("alpha");
+const tickSamples: number[] = [];
+
+const server = createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  if (req.url === "/api/stats") {
+    const sorted = [...tickSamples].sort((a, b) => a - b);
+    const p99 = sorted[Math.floor(sorted.length * 0.99)] ?? 0;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        clients: defaultRoom.clients.size,
+        bots: defaultRoom.bots.size,
+        tickP99Ms: Number(p99.toFixed(3)),
+        memoryRssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      })
+    );
+    return;
+  }
+
+  if (req.url === "/api/bots" && req.method === "POST") {
+    const totalBots = defaultRoom.spawnBots(8);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, bots: totalBots }));
+    return;
+  }
+
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Dogfight Typed WebSocket Server (Lab 06) is running.\n");
+  res.end("Dogfight Server (Lab 07 Perf & Bots) is running.\n");
 });
 
 const wss = new WebSocketServer({ server });
-const defaultRoom = new GameRoom("alpha");
 
 defaultRoom.on("join", (player) => {
   const logMsg = `[${new Date().toISOString()}] JOIN: ${player.name} (${player.id})\n`;
   logStream.write(logMsg);
-  console.log(logMsg.trim());
 });
 
 defaultRoom.on("leave", (player) => {
   const logMsg = `[${new Date().toISOString()}] LEAVE: ${player.name} (${player.id})\n`;
   logStream.write(logMsg);
-  console.log(logMsg.trim());
 });
 
 defaultRoom.on("shoot", (shotData) => {
@@ -84,10 +108,7 @@ function toArrayBuffer(data: RawData): ArrayBuffer {
     const buf = Buffer.concat(data);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
-  
-  const copy = new Uint8Array(data.byteLength);
-  copy.set(data);
-  return copy.buffer;
+  return Uint8Array.from(data).buffer;
 }
 
 wss.on("connection", (ws: WebSocket) => {
@@ -97,7 +118,6 @@ wss.on("connection", (ws: WebSocket) => {
         const ab = toArrayBuffer(message);
         const decoded = binaryTelemetryCodec.decode(ab);
         if (!decoded.ok) {
-          console.warn("Rejected binary packet:", decoded.error);
           ws.close(1003, "Invalid binary frame");
           return;
         }
@@ -108,15 +128,12 @@ wss.on("connection", (ws: WebSocket) => {
       const raw: unknown = JSON.parse(message.toString());
       const parsed = parseClientMessage(raw);
       if (!parsed.ok) {
-        console.warn("Rejected JSON packet:", parsed.error);
         ws.close(1003, "Schema validation failed");
         return;
       }
 
       handleClientMessage(ws, parsed.data);
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.error("Boundary parse error:", errMsg);
+    } catch {
       ws.close(1003, "Malformed payload");
     }
   });
@@ -127,14 +144,19 @@ wss.on("connection", (ws: WebSocket) => {
 });
 
 setInterval(() => {
+  const t0 = performance.now();
+  defaultRoom.stepBots(0.05);
   const stateMsg = defaultRoom.getStateMessage();
   for (const [ws] of defaultRoom.clients) {
     if (ws.readyState === 1) {
       ws.send(stateMsg);
     }
   }
+  const elapsed = performance.now() - t0;
+  tickSamples.push(elapsed);
+  if (tickSamples.length > 200) tickSamples.shift();
 }, 50);
 
 server.listen(config.PORT, config.HOST, () => {
-  console.log(`🚀 Typed Dogfight Server listening on ws://${config.HOST}:${config.PORT}`);
+  console.log(`🚀 Dogfight Server listening on ws://${config.HOST}:${config.PORT}`);
 });

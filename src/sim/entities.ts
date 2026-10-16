@@ -1,5 +1,6 @@
 import { Entity } from "./entity.ts";
 import { Vector2 } from "./vector.ts";
+import { ObjectPool } from "./pool.ts";
 import type { EntityId, EntityKind } from "./types.ts";
 import type { World } from "./world.ts";
 
@@ -53,11 +54,36 @@ export function withHoming<T extends Entity>(
 }
 
 export class Bullet extends Entity {
-  readonly ownerId: EntityId | string;
+  ownerId: EntityId | string;
   ttl: number;
-  readonly damage: number;
+  damage: number;
 
   constructor({
+    x = 0,
+    y = 0,
+    vx = 0,
+    vy = 0,
+    angle = 0,
+    ownerId = "",
+    ttl = 1.6,
+    damage = 25,
+  }: {
+    x?: number;
+    y?: number;
+    vx?: number;
+    vy?: number;
+    angle?: number;
+    ownerId?: EntityId | string;
+    ttl?: number;
+    damage?: number;
+  } = {}) {
+    super({ x, y, vx, vy, angle, radius: 4, kind: "bullet" });
+    this.ownerId = ownerId;
+    this.ttl = ttl;
+    this.damage = damage;
+  }
+
+  initFromPool({
     x,
     y,
     vx,
@@ -75,11 +101,19 @@ export class Bullet extends Entity {
     ownerId: EntityId | string;
     ttl?: number;
     damage?: number;
-  }) {
-    super({ x, y, vx, vy, angle, radius: 4, kind: "bullet" });
+  }): this {
+    this.pos = new Vector2(x, y);
+    this.prevPos = this.pos.clone();
+    this.vel = new Vector2(vx, vy);
+    this.angle = angle;
+    this.prevAngle = angle;
     this.ownerId = ownerId;
     this.ttl = ttl;
     this.damage = damage;
+    this.alive = true;
+    this.isHoming = false;
+    this.behaviors.length = 0;
+    return this;
   }
 
   override update(dt: number, world: World): void {
@@ -91,6 +125,17 @@ export class Bullet extends Entity {
     super.update(dt, world);
   }
 }
+
+// Глобальний пул куль для уникнення пауз Garbage Collector (Lab 07 M3)
+export const bulletPool = new ObjectPool<Bullet>(
+  () => new Bullet(),
+  (b) => {
+    b.alive = true;
+    b.isHoming = false;
+    b.behaviors.length = 0;
+  },
+  128
+);
 
 export class Asteroid extends Entity {
   #hp: number;

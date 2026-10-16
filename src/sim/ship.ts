@@ -1,6 +1,6 @@
 import { Entity } from "./entity.ts";
 import { Vector2 } from "./vector.ts";
-import { Bullet, withHoming, type PickupData } from "./entities.ts";
+import { Bullet, bulletPool, withHoming, type PickupData } from "./entities.ts";
 import { gameBus } from "./types.ts";
 import type { World } from "./world.ts";
 import type { InputController } from "../input.ts";
@@ -90,7 +90,8 @@ export class Ship extends Entity {
     const nose = this.pos.add(dir.scale(this.radius + 6));
     const bulletVel = this.vel.add(dir.scale(SHIP_CONFIG.bulletSpeed));
 
-    const bullet = new Bullet({
+    // Беремо кулю з Object Pool замість створення нового об'єкта (Lab 07 M3)
+    const bullet = bulletPool.acquire().initFromPool({
       x: nose.x,
       y: nose.y,
       vx: bulletVel.x,

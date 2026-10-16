@@ -1,6 +1,14 @@
 import { Vector2 } from "./vector.ts";
 import { Entity } from "./entity.ts";
-import { Asteroid, Bullet, Explosion, Pickup, createPickup, withHoming } from "./entities.ts";
+import {
+  Asteroid,
+  Bullet,
+  bulletPool,
+  Explosion,
+  Pickup,
+  createPickup,
+  withHoming,
+} from "./entities.ts";
 import { Ship } from "./ship.ts";
 import { detectCollisions } from "./collision.ts";
 import { audio } from "../render/audio.ts";
@@ -128,7 +136,7 @@ export class World {
     return new Vector2(this.arena.width / 2, this.arena.height / 2);
   }
 
-  step(dt: number, input: InputController): void {
+  step(dt: number, input?: InputController): void {
     for (const entity of this) {
       if (!entity.alive) continue;
       entity.savePreviousState();
@@ -177,8 +185,12 @@ export class World {
       this.pickupSpawnTimer = 8.0;
     }
 
+    // Повертаємо мертві кулі в ObjectPool замість відправлення в Garbage Collector
     for (const [id, entity] of this.#entities) {
       if (!entity.alive || this.#pendingRemoval.has(id)) {
+        if (entity instanceof Bullet) {
+          bulletPool.release(entity);
+        }
         this.#entities.delete(id);
       }
     }
