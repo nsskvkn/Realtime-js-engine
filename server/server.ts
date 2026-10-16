@@ -15,25 +15,41 @@ import {
 const ServerConfigSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
   HOST: z.string().default("0.0.0.0"),
+  NODE_ENV: z.string().default("development"),
 });
-
-export type ServerConfig = z.infer<typeof ServerConfigSchema>;
 
 const config = ServerConfigSchema.parse({
   PORT: process.env.PORT,
   HOST: process.env.HOST,
-}) satisfies ServerConfig;
+  NODE_ENV: process.env.NODE_ENV,
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logStream = fs.createWriteStream(path.join(__dirname, "gameLog.txt"), { flags: "a" });
 
 const defaultRoom = new GameRoom("alpha");
 const tickSamples: number[] = [];
+const GIT_SHA = process.env.GIT_SHA || "v1.0.0-local";
 
 const server = createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
-  if (req.url === "/api/stats") {
+  // Liveness probe
+  if (req.url === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "healthy", sha: GIT_SHA, uptime: process.uptime() }));
+    return;
+  }
+
+  // Readiness probe
+  if (req.url === "/ready") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ready", clients: defaultRoom.clients.size }));
+    return;
+  }
+
+  // Metrics / Stats
+  if (req.url === "/metrics" || req.url === "/api/stats") {
     const sorted = [...tickSamples].sort((a, b) => a - b);
     const p99 = sorted[Math.floor(sorted.length * 0.99)] ?? 0;
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -43,6 +59,7 @@ const server = createServer((req, res) => {
         bots: defaultRoom.bots.size,
         tickP99Ms: Number(p99.toFixed(3)),
         memoryRssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        env: config.NODE_ENV,
       })
     );
     return;
@@ -56,7 +73,7 @@ const server = createServer((req, res) => {
   }
 
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Dogfight Server (Lab 07 Perf & Bots) is running.\n");
+  res.end("Dogfight Production WebSocket Server (Lab 08) is running.\n");
 });
 
 const wss = new WebSocketServer({ server });
@@ -108,7 +125,9 @@ function toArrayBuffer(data: RawData): ArrayBuffer {
     const buf = Buffer.concat(data);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
-  return Uint8Array.from(data).buffer;
+  const buffer = new ArrayBuffer(data.byteLength);
+  new Uint8Array(buffer).set(data);
+  return buffer;
 }
 
 wss.on("connection", (ws: WebSocket) => {
@@ -143,7 +162,7 @@ wss.on("connection", (ws: WebSocket) => {
   });
 });
 
-setInterval(() => {
+const tickInterval = setInterval(() => {
   const t0 = performance.now();
   defaultRoom.stepBots(0.05);
   const stateMsg = defaultRoom.getStateMessage();
@@ -158,5 +177,35 @@ setInterval(() => {
 }, 50);
 
 server.listen(config.PORT, config.HOST, () => {
-  console.log(`🚀 Dogfight Server listening on ws://${config.HOST}:${config.PORT}`);
+  console.log(`🚀 Dogfight Production Server listening on ws://${config.HOST}:${config.PORT}`);
 });
+
+// --- GRACEFUL SHUTDOWN (Lab 08 M1) ---
+function shutdown(signal: string) {
+  console.log(`\n[${signal}] Received shutdown signal. Closing gracefully...`);
+  clearInterval(tickInterval);
+
+  // Notify all connected clients
+  for (const [ws] of defaultRoom.clients) {
+    if (ws.readyState === 1) {
+      ws.close(1001, "Server shutting down");
+    }
+  }
+
+  server.close(() => {
+    console.log("HTTP server closed. Flushing logs...");
+    logStream.end(() => {
+      console.log("Log stream flushed. Exiting 0.");
+      process.exit(0);
+    });
+  });
+
+  // Force exit if things hang
+  setTimeout(() => {
+    console.error("Forcing shutdown after timeout.");
+    process.exit(1);
+  }, 10000);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

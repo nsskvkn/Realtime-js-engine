@@ -203,3 +203,37 @@ We benchmarked moving particle & background buffer processing to a dedicated `Wo
 | **N = 192 (Capacity Limit)** | `34.10 ms` | `94 MB` | **CAPACITY LIMIT REACHED** |
 
 **Bottleneck Analysis:** At **$N \approx 180\text{–}192$** concurrent players in a single room, `JSON.stringify` broadcast fan-out ($O(N^2)$ state serialization across sockets) saturates the 33 ms tick budget before CPU physics.
+
+---
+
+# Dogfight — Lab 08: Production Node, Dockerization, Observability & Release v1.0.0
+
+## Production Architecture & Operational Features
+- **Graceful Shutdown (`SIGTERM` / `SIGINT`)**: On receiving a termination signal, the Node.js server stops accepting new connections, gracefully closes active WebSocket connections with code `1001` (Server shutting down), flushes file write streams (`gameLog.txt`), and exits cleanly with code `0` within a 10-second timeout.
+- **Observability Endpoints (`server/server.ts`)**:
+  - `GET /health`: Liveness probe returning process uptime and Git SHA version stamp.
+  - `GET /ready`: Readiness probe indicating whether the server and active rooms are ready to accept connections.
+  - `GET /metrics` & `/api/stats`: Real-time JSON telemetry reporting active clients, bot count, tick latency p99 (`tickP99Ms`), and memory consumption (`RSS` in MB).
+- **Multi-Stage Dockerfile**: Two-stage build using `node:22-alpine` that compiles TypeScript and bundles the client in Stage 1, then copies only production assets and pruned dependencies (`npm ci --omit=dev`) into a lightweight, secure non-root runner image (< 200 MB) with an integrated `HEALTHCHECK`.
+- **CI/CD Release Pipeline (`.github/workflows/ci.yml`)**: Automated GitHub Actions workflow triggering typechecking, unit/property tests, and project builds on every push and tag (`v1.0.0`).
+
+---
+
+## Final Project Summary & Metrics Dashboard
+
+### 1. Key Performance Indicators (Consolidated)
+- **Engine Loop:** Fixed timestep (`1/60s`) with accumulator interpolation, running stably at 144 FPS (`~6.94 ms` frame time).
+- **Garbage Collection:** Zero major GC pauses during intense 30-second combat sessions achieved via **Object Pooling** (`ObjectPool<Bullet>`) and monomorphic V8 shape preservation.
+- **Network Protocol:** Compact **15-byte Binary Telemetry** (`ArrayBuffer` / `DataView`) reducing upstream payload by ~83% compared to JSON (~82 bytes).
+- **Server Capacity:** Single-instance tick loop sustained up to **180 concurrent pilot entities** before hitting the `33 ms` tick budget bottleneck (fan-out serialization).
+
+### 2. How to Run Locally in Three Commands
+```bash
+# 1. Install dependencies across workspace
+npm ci
+
+# 2. Start the production WebSocket server
+cd server && npm start
+
+# 3. In another terminal, start the Vite client dev server
+npm run dev

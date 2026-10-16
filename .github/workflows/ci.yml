@@ -1,20 +1,21 @@
-name: CI
+name: CI & Release
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
-  build-and-test:
+  validate-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "npm"
+          cache: 'npm'
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
