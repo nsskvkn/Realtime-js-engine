@@ -4,51 +4,66 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GameRoom } from "./gameRoom.js";
+import { decodeInputBinary } from "../src/net/protocol.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logStream = fs.createWriteStream(path.join(__dirname, "gameLog.txt"), { flags: "a" });
 
 const server = createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Dogfight WebSocket Server is running.\n");
+  res.end("Dogfight WebSocket Server (Lab 05 Multiplayer) is running.\n");
 });
 
 const wss = new WSServer({ server });
-const rooms = new Map();
-
-// Створюємо кімнату за замовчуванням "alpha"
 const defaultRoom = new GameRoom("alpha");
-rooms.set("alpha", defaultRoom);
 
 defaultRoom.on("join", (player) => {
-  const logMsg = `[${new Date().toISOString()}] Player joined: ${player.name} (${player.id})\n`;
+  const logMsg = `[${new Date().toISOString()}] JOIN: ${player.name} (${player.id})\n`;
   logStream.write(logMsg);
   console.log(logMsg.trim());
 });
 
 defaultRoom.on("leave", (player) => {
-  const logMsg = `[${new Date().toISOString()}] Player left: ${player.name} (${player.id})\n`;
+  const logMsg = `[${new Date().toISOString()}] LEAVE: ${player.name} (${player.id})\n`;
   logStream.write(logMsg);
   console.log(logMsg.trim());
 });
 
+// Ретранслюємо постріли іншим гравцям у кімнаті
+defaultRoom.on("shoot", (shotData) => {
+  const msg = JSON.stringify({ type: "remoteShoot", ...shotData });
+  for (const [clientWs, player] of defaultRoom.clients) {
+    if (player.id !== shotData.ownerId && clientWs.readyState === 1) {
+      clientWs.send(msg);
+    }
+  }
+});
+
 wss.on("connection", (ws) => {
-  let playerId = null;
-
-  ws.on("message", (message) => {
+  ws.on("message", (message, isBinary) => {
     try {
-      const data = JSON.parse(message);
-
-      if (data.type === "join") {
-        playerId = defaultRoom.addPlayer(ws, data.name || "Pilot");
-        ws.send(JSON.stringify({ type: "welcome", id: playerId }));
+      // 1. Якщо прийшов 14-байтний бінарний пакет телеметрії (Lab 05)
+      if (isBinary) {
+        const decoded = decodeInputBinary(message);
+        if (decoded) {
+          defaultRoom.updatePlayerInput(ws, decoded);
+        }
+        return;
       }
 
-      if (data.type === "input") {
+      // 2. Якщо прийшло керуюче JSON-повідомлення (join, ping, або старий input)
+      const data = JSON.parse(message.toString());
+
+      if (data.type === "join") {
+        const playerId = defaultRoom.addPlayer(ws, data.name || "Pilot");
+        ws.send(JSON.stringify({ type: "welcome", id: playerId }));
+      } else if (data.type === "ping") {
+        ws.send(JSON.stringify({ type: "pong", clientTime: data.clientTime }));
+      } else if (data.type === "input") {
         defaultRoom.updatePlayerInput(ws, data);
       }
     } catch (err) {
-      console.error("Invalid JSON received:", err);
+      console.error("Packet error:", err.message);
     }
   });
 
@@ -57,11 +72,11 @@ wss.on("connection", (ws) => {
   });
 });
 
-// Ігровий цикл сервера (20 кадрів на секунду розсилає стан клієнтам)
+// Розсилка знімків світу (Snapshots) 20 разів на секунду (кожні 50 мс)
 setInterval(() => {
   const stateMsg = defaultRoom.getStateMessage();
   for (const [ws] of defaultRoom.clients) {
-    if (ws.readyState === 1) { // OPEN
+    if (ws.readyState === 1) {
       ws.send(stateMsg);
     }
   }
@@ -69,5 +84,5 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
-  console.log(`🚀 WebSocket server is listening on ws://localhost:${PORT}`);
+  console.log(`🚀 Dogfight Multiplayer Server listening on ws://localhost:${PORT}`);
 });

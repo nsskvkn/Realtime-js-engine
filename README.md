@@ -99,3 +99,26 @@ The `GameRoom` class inherits from `EventEmitter`, cleanly decoupling network tr
 
 ### 2. Non-Blocking File Logging via Streams
 Using `fs.createWriteStream` instead of synchronous file writes (`fs.appendFileSync`) ensures that high-frequency client requests or heavy tick loops do not block the Node.js event loop, maintaining smooth server-side performance and efficient I/O handling.
+
+---
+
+# Dogfight — Lab 05: Real-Time Multiplayer, Binary Protocol (`ArrayBuffer`), and Network Interpolation
+
+## New Multiplayer & Networking Features
+- **Binary Telemetry Protocol (`src/net/protocol.js`)**: Encodes high-frequency player input/state into a fixed **14-byte `ArrayBuffer`** using `DataView` (`1B` message type, `1B` bitmask flags for thrust/fire, and `3 × Float32` for `x`, `y`, `angle` in little-endian format).
+- **Live Protocol Toggle (`KeyB`)**: Press **B** during gameplay to dynamically switch between **Binary (14B)** and **JSON (~82B)** serialization and observe protocol state in the HUD.
+- **Remote Player Interpolation (`src/main.js`, `src/render/draw.js`)**: Smoothly interpolates remote ships between 20 Hz server snapshots (`50 ms` intervals) up to the client's 144 Hz refresh rate using `lerp` and `lerpAngle`.
+- **RTT Ping Telemetry**: Measures round-trip latency (`ping RTT ms`) via timestamped `ping`/`pong` control frames.
+
+---
+
+## Milestone Technical Write-Up & Measurements (Lab 05)
+
+### 1. Binary (`ArrayBuffer` / `DataView`) vs. JSON Bandwidth Comparison
+At a 60 Hz client send rate:
+- **JSON Payload:** `{"type":"input","x":612.45,"y":398.12,"angle":-1.5708,"thrust":true,"firing":false}` averages **~82–90 bytes** per packet (`~5.1 KB/s` upstream per client).
+- **Binary Payload:** Fixed **14 bytes** per packet (`0.84 KB/s` upstream per client).
+- **Result:** Binary encoding achieves an **~83% reduction in payload size** and eliminates `JSON.stringify` / `JSON.parse` garbage-collection pressure on both client and server.
+
+### 2. Why Remote Entities Need Interpolation
+The server broadcasts room snapshots at `20 Hz` (every `50 ms`), while the local display renders at `144 Hz` (every `6.94 ms`). Rendering remote players directly at their latest snapshot coordinates causes visible 20 FPS stutter. By treating incoming snapshot coordinates as `targetX / targetY / targetAngle` and smoothly converging `renderX / renderY / renderAngle` each frame, remote ships move fluidly even under network jitter.

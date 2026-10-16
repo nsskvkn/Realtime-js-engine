@@ -63,7 +63,6 @@ export function drawShip(ctx, ship, alpha) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Візуальне кільце щита
   if (ship.shieldTimer > 0) {
     ctx.beginPath();
     ctx.arc(0, 0, ship.radius + 6, 0, Math.PI * 2);
@@ -73,6 +72,47 @@ export function drawShip(ctx, ship, alpha) {
   }
 
   ctx.restore();
+}
+
+// Малювання інтерпольованих кораблів інших гравців по мережі (Lab 05)
+export function drawRemotePlayers(ctx, remotePlayers) {
+  for (const [, remote] of remotePlayers) {
+    ctx.save();
+    ctx.translate(remote.renderX, remote.renderY);
+    ctx.rotate(remote.renderAngle);
+
+    if (remote.thrust) {
+      ctx.beginPath();
+      ctx.moveTo(-12, -5);
+      ctx.lineTo(-24, 0);
+      ctx.lineTo(-12, 5);
+      ctx.closePath();
+      ctx.fillStyle = "#ffd166";
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(18, 0);
+    ctx.lineTo(-14, -11);
+    ctx.lineTo(-9, 0);
+    ctx.lineTo(-14, 11);
+    ctx.closePath();
+
+    ctx.fillStyle = "#ff5a5f";
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // Нікнейм над кораблем суперника
+    ctx.save();
+    ctx.font = "12px monospace";
+    ctx.fillStyle = "#ffb703";
+    ctx.textAlign = "center";
+    ctx.fillText(remote.name, remote.renderX, remote.renderY - 24);
+    ctx.restore();
+  }
 }
 
 export function drawBullet(ctx, bullet, alpha) {
@@ -175,7 +215,7 @@ export function drawWorld(ctx, world, alpha) {
   }
 }
 
-export function drawHud(ctx, stats, world) {
+export function drawHud(ctx, stats, world, netStats) {
   ctx.save();
   ctx.font = "14px monospace";
   ctx.fillStyle = "#e0e6ed";
@@ -191,7 +231,24 @@ export function drawHud(ctx, stats, world) {
     ctx.fillText(`ship HP:  ${hp}`, 16, 112);
     ctx.fillStyle = "#8d99ae";
     ctx.fillText(`entities: ${world.size}`, 16, 132);
-    ctx.fillText(`[Space] Fire | [E] Homing Missile | [Click] Fire`, 16, 156);
+
+    if (netStats) {
+      ctx.fillStyle = netStats.connected ? "#72efdd" : "#ef476f";
+      ctx.fillText(
+        `net:      ${netStats.connected ? "ONLINE" : "OFFLINE"} (${netStats.onlineCount} pilots)`,
+        16,
+        158
+      );
+      ctx.fillStyle = "#e0e6ed";
+      ctx.fillText(
+        `ping RTT: ${netStats.pingMs} ms | proto: ${netStats.useBinary ? "Binary (14B)" : "JSON (~82B)"}`,
+        16,
+        178
+      );
+    }
+
+    ctx.fillStyle = "#8d99ae";
+    ctx.fillText(`[Space] Fire | [E] Homing | [B] Toggle Binary/JSON`, 16, 204);
 
     if (world.playerShip && !world.playerShip.alive) {
       ctx.font = "bold 20px monospace";

@@ -4,19 +4,28 @@ export class GameRoom extends EventEmitter {
   constructor(roomId) {
     super();
     this.roomId = roomId;
-    this.clients = new Map(); // ws -> player state
+    this.clients = new Map(); // ws -> player object
     this.state = {
       players: {},
-      asteroids: [],
     };
   }
 
   addPlayer(ws, playerName) {
     const id = Math.random().toString(36).substring(2, 9);
-    this.clients.set(ws, { id, name: playerName, x: 600, y: 400 });
-    this.state.players[id] = { id, name: playerName, x: 600, y: 400, hp: 100 };
+    const player = {
+      id,
+      name: playerName,
+      x: 400 + Math.random() * 400,
+      y: 250 + Math.random() * 300,
+      angle: -Math.PI / 2,
+      thrust: false,
+      hp: 100,
+    };
 
-    this.emit("join", { id, name: playerName });
+    this.clients.set(ws, player);
+    this.state.players[id] = player;
+
+    this.emit("join", player);
     return id;
   }
 
@@ -31,10 +40,23 @@ export class GameRoom extends EventEmitter {
 
   updatePlayerInput(ws, inputData) {
     const player = this.clients.get(ws);
-    if (player && this.state.players[player.id]) {
-      this.state.players[player.id].x = inputData.x;
-      this.state.players[player.id].y = inputData.y;
-      this.state.players[player.id].angle = inputData.angle;
+    if (!player) return;
+
+    const target = this.state.players[player.id];
+    if (target) {
+      target.x = inputData.x;
+      target.y = inputData.y;
+      target.angle = inputData.angle;
+      target.thrust = Boolean(inputData.thrust);
+
+      if (inputData.firing) {
+        this.emit("shoot", {
+          ownerId: player.id,
+          x: target.x,
+          y: target.y,
+          angle: target.angle,
+        });
+      }
     }
   }
 
@@ -42,6 +64,7 @@ export class GameRoom extends EventEmitter {
     return JSON.stringify({
       type: "state",
       room: this.roomId,
+      serverTime: Date.now(),
       state: this.state,
     });
   }
