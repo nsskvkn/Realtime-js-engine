@@ -122,3 +122,32 @@ At a 60 Hz client send rate:
 
 ### 2. Why Remote Entities Need Interpolation
 The server broadcasts room snapshots at `20 Hz` (every `50 ms`), while the local display renders at `144 Hz` (every `6.94 ms`). Rendering remote players directly at their latest snapshot coordinates causes visible 20 FPS stutter. By treating incoming snapshot coordinates as `targetX / targetY / targetAngle` and smoothly converging `renderX / renderY / renderAngle` each frame, remote ships move fluidly even under network jitter.
+
+---
+
+# Dogfight — Lab 06: TypeScript Strict Migration & Shared Protocol Contract
+
+## Architecture & Type System Features
+- **Strict TypeScript (`tsconfig.json`)**: Enabled `"strict": true`, `"noUncheckedIndexedAccess": true`, and `"verbatimModuleSyntax": true` with zero `any` across the entire codebase.
+- **Single Source of Truth Protocol (`src/net/protocol.ts`)**: Zod schemas validate incoming `unknown` payloads at network boundaries (`parseClientMessage`, `parseServerMessage`), inferring TypeScript types directly via `z.infer<typeof Schema>`.
+- **Typed Binary Codec (`TelemetryCodec<ArrayBuffer>`)**: 15-byte binary frame with protocol version byte (`PROTOCOL_VERSION = 1`), finite float checks, and structured `ParseResult<T>` error reporting.
+- **Exhaustive Discriminated Unions**: Every `switch` over `msg.type` and `entity.kind` ends with `default: { const _exhaustive: never = ... }` so adding a new variant triggers a compile-time error if unhandled.
+
+## M4 Write-Up: UI Framework Decision, "What TypeScript Found", and Key Types
+
+### 1. UI Framework Decision (Vanilla DOM Retained)
+We chose to keep the lobby and Canvas HUD in **Vanilla TypeScript + DOM** rather than introducing React/Vue/Svelte. Because our UI consists of a single startup overlay (`#ui-overlay`) and an immediate-mode Canvas HUD (`drawHud`), a reactive Virtual DOM framework would add bundle overhead and build complexity without simplifying our 60 Hz canvas render loop.
+
+### 2. "What TypeScript Found" During Migration
+1. **Unchecked `Map.get()` and Indexed Array Access (`noUncheckedIndexedAccess`)**: In `collision.ts` (`active[i]`) and `gameRoom.ts` (`this.state.players[player.id]`), TypeScript flagged potential `undefined` values that were previously assumed to exist.
+2. **Typo in `gameRoom.js` ID generator (`36.substring` vs `toString(36).substring`)**: In Lab 04/05, `Math.random().toString(36.substring(2, 9))` passed silently or failed at runtime; TypeScript immediately caught calling `.substring` on a `number` literal `36`.
+3. **Nullable DOM Elements & `AudioContext` Lifecycle**: `document.getElementById("start-btn")` and `canvas.getContext("2d")` return `HTMLElement | null` and `CanvasRenderingContext2D | null`, forcing explicit runtime guards before attaching listeners or scaling the canvas.
+4. **Raw WebSocket Buffer Shapes (`RawData`)**: `ws` delivers `ArrayBuffer | Buffer | Buffer[]`; TypeScript caught that passing `RawData` directly into `DataView` without normalizing `byteOffset` can read corrupted memory slices.
+
+### 3. Three Most Interesting Types Explained
+1. **Branded Entity Identifier (`type EntityId = number & { readonly __brand: "EntityId" }`)**:
+   At runtime, an `EntityId` is just a plain JavaScript `number` (zero memory overhead). At compile time, the phantom `__brand` property prevents accidentally passing a frame `Tick` or raw score number into `world.get(id)`.
+2. **Discriminated Union Protocol (`type ClientMessage = z.infer<typeof ClientMessageSchema>`)**:
+   Combines variants sharing a literal `type` property (`"join" | "ping" | "input"`). Checking `switch (msg.type)` automatically narrows the payload type inside each `case` branch and proves exhaustiveness via `const _exhaustive: never = msg`.
+3. **Generic Typed Event Bus (`class Bus<E extends Record<string, unknown>>`)**:
+   Links each event name `K extends keyof E` directly to its payload type `E[K]` in `on<K>(name: K, fn: (payload: E[K]) => void)` and `emit<K>(name: K, payload: E[K])`, making mismatched event payloads impossible.

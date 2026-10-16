@@ -1,20 +1,17 @@
 export class SoundEngine {
-  constructor() {
-    this.ctx = null;
-    this.muted = false;
-  }
+  ctx: AudioContext | null = null;
+  muted = false;
 
-  init() {
+  init(): void {
     if (!this.ctx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
       this.ctx = new AudioContext();
     }
     if (this.ctx.state === "suspended") {
-      this.ctx.resume();
+      void this.ctx.resume();
     }
   }
 
-  playLaser() {
+  playLaser(): void {
     if (this.muted) return;
     this.init();
     if (!this.ctx) return;
@@ -37,13 +34,13 @@ export class SoundEngine {
     osc.stop(now + 0.15);
   }
 
-  playExplosion() {
+  playExplosion(): void {
     if (this.muted) return;
     this.init();
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
-    const bufferSize = this.ctx.sampleRate * 0.4;
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.4);
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
 
@@ -71,7 +68,7 @@ export class SoundEngine {
     noise.stop(now + 0.4);
   }
 
-  playPickup() {
+  playPickup(): void {
     if (this.muted) return;
     this.init();
     if (!this.ctx) return;

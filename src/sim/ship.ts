@@ -1,6 +1,18 @@
-import { Entity } from "./entity.js";
-import { Vector2 } from "./vector.js";
-import { Bullet, withHoming } from "./entities.js";
+import { Entity } from "./entity.ts";
+import { Vector2 } from "./vector.ts";
+import { Bullet, withHoming, type PickupData } from "./entities.ts";
+import { gameBus } from "./types.ts";
+import type { World } from "./world.ts";
+import type { InputController } from "../input.ts";
+
+export interface ShipConfig {
+  readonly turnSpeed: number;
+  readonly acceleration: number;
+  readonly drag: number;
+  readonly maxSpeed: number;
+  readonly bulletSpeed: number;
+  readonly fireCooldown: number;
+}
 
 export const SHIP_CONFIG = {
   turnSpeed: 4.2,
@@ -9,13 +21,18 @@ export const SHIP_CONFIG = {
   maxSpeed: 480,
   bulletSpeed: 560,
   fireCooldown: 0.22,
-};
+} satisfies ShipConfig;
 
 export class Ship extends Entity {
   #hp = 100;
-  #maxHp = 100;
+  readonly #maxHp = 100;
 
-  constructor(x, y) {
+  thrust = false;
+  cooldown = 0;
+  shieldTimer = 0;
+  rapidFireTimer = 0;
+
+  constructor(x: number, y: number) {
     super({
       x,
       y,
@@ -23,29 +40,25 @@ export class Ship extends Entity {
       radius: 15,
       kind: "ship",
     });
-    this.thrust = false;
-    this.cooldown = 0;
-    this.shieldTimer = 0;
-    this.rapidFireTimer = 0;
   }
 
-  get hp() {
+  get hp(): number {
     return this.#hp;
   }
 
-  get maxHp() {
+  get maxHp(): number {
     return this.#maxHp;
   }
 
-  takeDamage(amount) {
-    if (this.shieldTimer > 0) return; // Щит поглинає шкоду
+  takeDamage(amount: number): void {
+    if (this.shieldTimer > 0) return;
     this.#hp = Math.max(0, this.#hp - amount);
     if (this.#hp === 0) {
       this.alive = false;
     }
   }
 
-  reset(x, y) {
+  reset(x: number, y: number): void {
     this.pos = new Vector2(x, y);
     this.prevPos = this.pos.clone();
     this.vel = new Vector2(0, 0);
@@ -53,23 +66,24 @@ export class Ship extends Entity {
     this.prevAngle = this.angle;
     this.#hp = this.#maxHp;
     this.alive = true;
-    this.shieldTimer = 2.0; // 2 секунди захисту після респауну
+    this.shieldTimer = 2.0;
     this.rapidFireTimer = 0;
   }
 
-  applyPickup(pickupData) {
+  applyPickup(pickupData: PickupData): void {
     if (pickupData.type === "shield") {
       this.shieldTimer = pickupData.duration;
-    } else if (pickupData.type === "rapidFire") {
+    } else {
       this.rapidFireTimer = pickupData.duration;
     }
+    gameBus.emit("pickupCollected", { shipId: this.id, pickupType: pickupData.type });
   }
 
-  // Метод пострілу (демонструє важливість контексту `this`)
-  fire(world, homing = false) {
+  fire(world: World, homing = false): Bullet | null {
     if (!this.alive || this.cooldown > 0) return null;
 
-    const baseCooldown = this.rapidFireTimer > 0 ? SHIP_CONFIG.fireCooldown * 0.4 : SHIP_CONFIG.fireCooldown;
+    const baseCooldown =
+      this.rapidFireTimer > 0 ? SHIP_CONFIG.fireCooldown * 0.4 : SHIP_CONFIG.fireCooldown;
     this.cooldown = homing ? baseCooldown * 1.8 : baseCooldown;
 
     const dir = Vector2.fromAngle(this.angle);
@@ -88,16 +102,19 @@ export class Ship extends Entity {
     });
 
     if (homing) {
-      withHoming(bullet, { targetKind: "asteroid", turnRate: 4.5, speed: SHIP_CONFIG.bulletSpeed });
+      withHoming(bullet, {
+        targetKind: "asteroid",
+        turnRate: 4.5,
+        speed: SHIP_CONFIG.bulletSpeed,
+      });
     }
 
-    if (world) {
-      world.spawn(bullet);
-    }
+    world.spawn(bullet);
+    gameBus.emit("fired", { shooter: this.id, homing });
     return bullet;
   }
 
-  update(dt, world, input) {
+  override update(dt: number, world: World, input?: InputController): void {
     if (this.cooldown > 0) this.cooldown = Math.max(0, this.cooldown - dt);
     if (this.shieldTimer > 0) this.shieldTimer = Math.max(0, this.shieldTimer - dt);
     if (this.rapidFireTimer > 0) this.rapidFireTimer = Math.max(0, this.rapidFireTimer - dt);
@@ -118,7 +135,6 @@ export class Ship extends Entity {
         this.vel = this.vel.add(accel);
       }
 
-      // Звичайний постріл на Space, самонавідна ракета на клавішу E
       if (input.isDown("Space")) {
         this.fire(world, false);
       }

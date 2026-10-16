@@ -1,7 +1,13 @@
-export function setupCanvas(canvas, onResize) {
+export function setupCanvas(
+  canvas: HTMLCanvasElement,
+  onResize?: (width: number, height: number) => void
+) {
   const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("2D context not available");
+  }
 
-  function resize() {
+  function resize(): void {
     const dpr = window.devicePixelRatio || 1;
     const width = window.innerWidth || document.documentElement.clientWidth || 800;
     const height = window.innerHeight || document.documentElement.clientHeight || 600;
@@ -11,9 +17,8 @@ export function setupCanvas(canvas, onResize) {
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
 
-    // Скидаємо трансформацію перед новим масштабуванням
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr);
+    ctx!.setTransform(1, 0, 0, 1, 0, 0);
+    ctx!.scale(dpr, dpr);
 
     if (onResize) {
       onResize(width, height);
@@ -21,7 +26,6 @@ export function setupCanvas(canvas, onResize) {
   }
 
   window.addEventListener("resize", resize);
-  // Викликаємо resize одразу після підключення
   resize();
 
   return { ctx, resize };
